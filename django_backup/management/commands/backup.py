@@ -282,7 +282,7 @@ class Command(BaseCommand):
         get the ssh connection to the remote server.
         '''
         if self.private_key:
-            return ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=None, self.private_key)
+            return ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=None, private_key=self.private_key)
         return ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=self.ftp_password)
 
     def get_blacklist_tables(self):
