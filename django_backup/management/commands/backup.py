@@ -181,6 +181,8 @@ class Command(BaseCommand):
         self.ftp_server = getattr(settings, 'BACKUP_FTP_SERVER', '')
         self.ftp_username = getattr(settings, 'BACKUP_FTP_USERNAME', '')
         self.ftp_password = getattr(settings, 'BACKUP_FTP_PASSWORD', '')
+        self.private_key = getattr(settings, 'BACKUP_FTP_PRIVATE_KEY', None)
+
 
         if self.clean_rsync:
             print 'cleaning broken rsync backups'
@@ -279,6 +281,8 @@ class Command(BaseCommand):
         '''
         get the ssh connection to the remote server.
         '''
+        if self.private_key:
+            return ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=None, self.private_key)
         return ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=self.ftp_password)
 
     def get_blacklist_tables(self):
