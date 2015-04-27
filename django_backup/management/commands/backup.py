@@ -405,7 +405,7 @@ class Command(BaseCommand):
         )
         if table_args:
             table_args = '-a %s' %table_args
-        pgdump_cmd = '%s %s --clean %s > %s' % (pgdump_path, ' '.join(args), table_args, outfile)
+        pgdump_cmd = '%s %s %s > %s' % (pgdump_path, ' '.join(args), table_args or '--clean', outfile)
         print pgdump_cmd
         os.system(pgdump_cmd)
 
