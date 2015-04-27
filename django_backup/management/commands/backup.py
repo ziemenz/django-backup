@@ -137,6 +137,8 @@ class Command(BaseCommand):
             help='Clean up local broken rsync backups'),
         make_option('--cleanremotersync', action='store_true', default=False, dest='clean_remote_rsync',
             help='Clean up remote broken rsync backups'),
+        make_option('--application', '-a', action='append', default=[], dest='apps',
+            help='Optionally only back up certain Djano apps'),
     )
     help = "Backup database. Only Mysql and Postgresql engines are implemented"
 
@@ -160,6 +162,7 @@ class Command(BaseCommand):
         self.clean_remote_rsync = options.get('clean_remote_rsync') and self.rsync #only when rsync is True
         self.no_local = options.get('no_local')
         self.delete_local = options.get('delete_local')
+        self.apps = options.get('apps')
 
         try:
             self.engine = settings.DATABASES['default']['ENGINE']
@@ -287,6 +290,13 @@ class Command(BaseCommand):
         '''
         return getattr(settings, 'BACKUP_TABLES_BLACKLIST', [])
 
+    def get_tables_for_apps(self, *apps):
+        '''Get table names for all for the given applications.'''
+        tables = connection.introspection.django_table_names(only_existing=True)
+        def check_table(table):
+            return any(table.startswith('%s_' %app) for app in apps)
+        return filter(check_table, tables)
+
     def store_ftp(self, local_files=[]):
         sftp = self.get_connection()
         if self.remote_dir:
@@ -344,6 +354,9 @@ class Command(BaseCommand):
         os.system('rm %s' % infile)
 
     def do_mysql_backup(self, outfile):
+
+        if self.apps:
+            raise NotImplementedError("Backuping up only ceratain apps not implemented in MySQL")
         args = []
         if self.user:
             args += ["--user='%s'" % self.user]
@@ -383,7 +396,10 @@ class Command(BaseCommand):
 
         if self.passwd:
             os.environ['PGPASSWORD'] = self.passwd
-        pgdump_cmd = '%s %s --clean > %s' % (pgdump_path, ' '.join(args), outfile)
+        table_args = ' '.join(
+            '-t %s '%table for table in self.get_tables_for_apps(*self.apps)
+        )
+        pgdump_cmd = '%s %s --clean %s > %s' % (pgdump_path, ' '.join(args), table_args, outfile)
         print pgdump_cmd
         os.system(pgdump_cmd)
 
