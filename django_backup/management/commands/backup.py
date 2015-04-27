@@ -403,6 +403,8 @@ class Command(BaseCommand):
         table_args = ' '.join(
             '-t %s '%table for table in self.get_tables_for_apps(*self.apps)
         )
+        if table_args:
+            table_args = '-d %s' %table_args
         pgdump_cmd = '%s %s --clean %s > %s' % (pgdump_path, ' '.join(args), table_args, outfile)
         print pgdump_cmd
         os.system(pgdump_cmd)
