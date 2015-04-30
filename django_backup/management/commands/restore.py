@@ -45,6 +45,7 @@ class Command(BaseCommand):
         self.ftp_username = settings.BACKUP_FTP_USERNAME
         self.ftp_password = settings.BACKUP_FTP_PASSWORD
         self.restore_media = options.get('media')
+        self.directory_to_backup = getattr(settings, 'DIRECTORY_TO_BACKUP', settings.MEDIA_ROOT)
 
         print 'Connecting to %s...' % self.ftp_server
         sftp = self.get_connection()
@@ -82,7 +83,7 @@ class Command(BaseCommand):
                 media_dir = os.path.join(media_remote_full_path, "media")
                 #A trailing slash to transfer only the contents of the folder
                 remote_rsync = '%s@%s:%s/' % (self.ftp_username, self.ftp_server, media_dir)
-                rsync_restore_cmd = 'rsync -az %s %s' % (remote_rsync, settings.MEDIA_ROOT)
+                rsync_restore_cmd = 'rsync -az %s %s' % (remote_rsync, self.directory_to_backup)
                 print 'Running rsync restore command: ', rsync_restore_cmd
                 os.system(rsync_restore_cmd)
             else:
@@ -112,7 +113,7 @@ class Command(BaseCommand):
         return os.system(cmd)
 
     def uncompress_media(self, file):
-        cmd = u'tar -C %s -xzf %s' % (settings.MEDIA_ROOT, file)
+        cmd = u'tar -C %s -xzf %s' % (self.directory_to_backup, file)
         print u'\t', cmd
         os.system(cmd)
 

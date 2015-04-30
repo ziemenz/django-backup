@@ -185,7 +185,7 @@ class Command(BaseCommand):
         self.ftp_username = getattr(settings, 'BACKUP_FTP_USERNAME', '')
         self.ftp_password = getattr(settings, 'BACKUP_FTP_PASSWORD', '')
         self.private_key = getattr(settings, 'BACKUP_FTP_PRIVATE_KEY', None)
-
+        self.directory_to_backup = getattr(settings, 'DIRECTORY_TO_BACKUP', settings.MEDIA_ROOT)
 
         if self.clean_rsync:
             print 'cleaning broken rsync backups'
@@ -248,7 +248,7 @@ class Command(BaseCommand):
 
         # Backing up media directories,
         if self.media:
-            self.directories += [settings.MEDIA_ROOT]
+            self.directories += self.directory_to_backup
 
         # Backing up directories
         dir_outfiles = []
