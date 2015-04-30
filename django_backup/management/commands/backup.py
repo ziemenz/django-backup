@@ -518,7 +518,7 @@ class Command(BaseCommand):
                 'local_backup_target': local_backup_target,
                 'rsync_flag': GOOD_RSYNC_FLAG,
             }
-            local_rsync_cmd = 'rsync -az --link-dest=%(local_current_backup)s %(all_directories)s %(local_backup_target)s' % local_info
+            local_rsync_cmd = 'rsync -az --copy-dirlinks --link-dest=%(local_current_backup)s %(all_directories)s %(local_backup_target)s' % local_info
             local_mark_cmd = 'touch %(local_backup_target)s/%(rsync_flag)s' % local_info
             local_link_cmd = 'rm -f %(local_current_backup)s && ln -s %(local_backup_target)s %(local_current_backup)s' % local_info
             cmd = '\n'.join(['%s&&%s' % (local_rsync_cmd, local_mark_cmd), local_link_cmd])
@@ -538,7 +538,7 @@ class Command(BaseCommand):
                 'remote_backup_target': remote_backup_target,
                 'rsync_flag': GOOD_RSYNC_FLAG,
             }
-            remote_rsync_cmd = 'rsync -az --link-dest=%(remote_current_backup)s %(all_directories)s %(host)s:%(remote_backup_target)s' % remote_info
+            remote_rsync_cmd = 'rsync -az --copy-dirlinks --link-dest=%(remote_current_backup)s %(all_directories)s %(host)s:%(remote_backup_target)s' % remote_info
             remote_mark_cmd = 'ssh %(host)s "touch %(remote_backup_target)s/%(rsync_flag)s"' % remote_info
             remote_link_cmd = 'ssh %(host)s "rm -f %(remote_current_backup)s && ln -s %(remote_backup_target)s %(remote_current_backup)s"' % remote_info
             cmd = '\n'.join(['%s&&%s' % (remote_rsync_cmd, remote_mark_cmd), remote_link_cmd])
