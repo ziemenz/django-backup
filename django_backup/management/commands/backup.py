@@ -74,6 +74,10 @@ def reserve_interval(backups, type, num):
         delta = timedelta(1)
         interval_end = datetime(now.year, now.month, now.day) + delta
         interval_start = interval_end - delta
+    elif type == 'hourly':
+        delta = timedelta(minutes=60)
+        interval_end = datetime(now.year, now.month, now.day, now.hour) + delta
+        interval_start = interval_end - delta
     for i in range(1, num + 1):
         for backup in backups:
             if between_interval(backup, interval_start, interval_end):
@@ -93,6 +97,8 @@ def decide_remove(backups, config):
     reserve += reserve_interval(backups, 'monthly', config['monthly'])
     reserve += reserve_interval(backups, 'weekly', config['weekly'])
     reserve += reserve_interval(backups, 'daily', config['daily'])
+    if config.get('hourly', 0):
+        reserve += reserve_interval(backups, 'hourly', config.get('hourly', 0))
     for i in backups:
         if i not in reserve:
             remove_list.append(i)
@@ -273,6 +279,9 @@ class Command(BaseCommand):
             print "Saving to remote server"
             self.store_ftp(local_files=[os.path.join(os.getcwd(), x) for x in dir_outfiles + [outfile]])
 
+        print 'Closing connection'
+        self.close_connection()
+
     def compress_dir(self, directory, outfile):
         print 'Backup directories ...'
         command = 'cd %s && tar -czf %s *' % (directory, outfile)
@@ -284,9 +293,17 @@ class Command(BaseCommand):
         '''
         get the ssh connection to the remote server.
         '''
+        if getattr(self, '_ssh', None):
+            return self._ssh
         if self.private_key:
-            return ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=None, private_key=self.private_key)
-        return ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=self.ftp_password)
+            self._ssh = ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=None, private_key=self.private_key)
+        else:
+            self._ssh = ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=self.ftp_password)
+        return self._ssh
+
+    def close_connection(self):
+        if getattr(self, '_ssh', None):
+            self._ssh.close()
 
     def get_blacklist_tables(self):
         '''
@@ -312,7 +329,6 @@ class Command(BaseCommand):
             filename = os.path.split(local_file)[-1]
             print 'Saving %s to remote server ' % local_file
             sftp.put(local_file, os.path.join(self.remote_dir or '', filename))
-        sftp.close()
         if self.delete_local:
             backups = os.listdir(self.backup_dir)
             backups = filter(is_backup, backups)
@@ -449,7 +465,6 @@ class Command(BaseCommand):
                 print '=' * 70
                 print 'Running Command on remote server: %s' % command
                 sftp.execute(command)
-            sftp.close()
         except ImportError:
             print 'cleaned nothing, because BACKUP_DATABASE_COPIES is missing'
 
@@ -502,7 +517,6 @@ class Command(BaseCommand):
                 print '=' * 70
                 print 'Running Command on remote server: %s' % command
                 sftp.execute(command)
-            sftp.close()
         except ImportError:
             print 'cleaned nothing, because BACKUP_MEDIA_COPIES is missing'
 
@@ -570,7 +584,6 @@ class Command(BaseCommand):
         full_cmd = '\n'.join(commands)
         print full_cmd
         sftp.execute(full_cmd)
-        sftp.close()
 
     def clean_local_broken_rsync(self):
         # local(web server)
