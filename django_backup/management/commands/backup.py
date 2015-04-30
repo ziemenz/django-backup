@@ -248,7 +248,7 @@ class Command(BaseCommand):
 
         # Backing up media directories,
         if self.media:
-            self.directories += self.directory_to_backup
+            self.directories += [self.directory_to_backup]
 
         # Backing up directories
         dir_outfiles = []
