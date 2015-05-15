@@ -3,12 +3,17 @@ from setuptools import find_packages
 
 setup(
     name='django-backup',
-    version     = '1.0.1',
-    author        = 'Chris Cohoat',
-    author_email = 'chris.cohoat@gmail.com',
-    url            = 'https://github.com/chriscohoat/django-backup',
+    version     = '2.0.0',
     description    = 'A backup script for the Django admin',
-    packages=find_packages(),
+    author = 'Dmitriy Kovalev, Michael Huynh, msaelices, Andy Baker, Chen Zhe, Chris Cohoat',
+    author_email = 'andy@ixxy.co.uk',
+    url = 'http://github.com/django-backup/django-backup',
+    packages = find_packages(exclude=('test_project',)),
     include_package_data=True,
+    classifiers=[
+        'Programming Language :: Python', 
+        'Framework :: Django', 
+        'License :: OSI Approved :: BSD License',
+    ]
 )
 
