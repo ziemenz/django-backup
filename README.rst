@@ -1,6 +1,6 @@
 django-backup
 =============
-http://github.com/andybak/django-backup
+http://github.com/django-backup/django-backup
 
 Backup, compress and restore database and media files. Transfer them via email or FTP and maintain a set number of dated versions on remote FTP server.
 
