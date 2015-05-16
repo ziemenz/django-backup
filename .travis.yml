@@ -1,0 +1,11 @@
+language: python
+sudo: false
+env:
+  matrix:
+    - TOXENV=py27-dj17-postgres
+    - TOXENV=py27-dj17-mysql
+    - TOXENV=py27-dj18-postgres
+    - TOXENV=py27-dj18-mysql
+install:
+  - pip install tox
+script: tox

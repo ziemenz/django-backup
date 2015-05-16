@@ -17,14 +17,19 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql', # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
-        'NAME': '', # Or path to database file if using sqlite3.
+        'NAME': 'django_backup',         # Or path to database file if using sqlite3.
         'USER': '',                      # Not used with sqlite3.
         'PASSWORD': '',                  # Not used with sqlite3.
         'HOST': '',                      # Set to empty string for localhost. Not used with sqlite3.
         'PORT': '',                      # Set to empty string for default. Not used with sqlite3.
     }
 }
+
+if os.environ['DBENGINE'] == 'mysql':
+    DATABASES['default']['ENGINE'] = 'django.db.backends.mysql'
+else:
+    DATABASES['default']['ENGINE'] = 'django.db.backends.postgresql_psycopg2'
+
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
@@ -167,6 +172,7 @@ BACKUP_FTP_USERNAME = None
 BACKUP_FTP_PASSWORD = None
 BACKUP_FTP_DIRECTORY = None
 
+TEST_RUNNER = 'django.test.runner.DiscoverRunner'
 
 # local_settings.py can be used to override environment-specific settings
 # like database and email that differ between development and production.

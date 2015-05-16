@@ -1,0 +1,6 @@
+[run]
+source = django_backup
+branch = True
+
+[report]
+omit = *tests*,test_project
