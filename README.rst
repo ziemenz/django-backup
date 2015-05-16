@@ -36,6 +36,7 @@ Supported options for manage.py backup
 --------------------------------------
 
 ::
+
     --email
     default=None
     Sends email with attached dump file
@@ -106,6 +107,7 @@ When rsync flag is used without the ftp flag data will be backed up to the local
 Extra Settings
 --------------
 ::
+
   BACKUP_SQLDUMP_PATH = '/path/to/mysqldump' # mysqldump binary location
   BACKUP_LOCAL_DIRECTORY = '/path/to/backups' # Where to store local backups
 
