@@ -6,6 +6,10 @@ from datetime import datetime
 from datetime import timedelta
 from optparse import make_option
 import re
+try:
+    from urllib.parse import splitport
+except ImportError:
+    from urllib import splitport
 
 from django.core.management.base import BaseCommand, CommandError
 from django.core.mail import EmailMessage
@@ -148,7 +152,13 @@ class Command(BaseCommand):
     )
     help = "Backup database. Only Mysql and Postgresql engines are implemented"
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **kwargs):
+        try:
+            self._handle(*args, **kwargs)
+        finally:
+            self.close_connection()
+
+    def _handle(self, *args, **options):
         self.time_suffix = time.strftime(TIME_FORMAT)
         self.email = options.get('email')
         self.ftp = options.get('ftp')
@@ -279,9 +289,6 @@ class Command(BaseCommand):
             print "Saving to remote server"
             self.store_ftp(local_files=[os.path.join(os.getcwd(), x) for x in dir_outfiles + [outfile]])
 
-        print 'Closing connection'
-        self.close_connection()
-
     def compress_dir(self, directory, outfile):
         print 'Backup directories ...'
         command = 'cd %s && tar -czf %s *' % (directory, outfile)
@@ -295,10 +302,27 @@ class Command(BaseCommand):
         '''
         if getattr(self, '_ssh', None):
             return self._ssh
+
+        conn_config = {
+            'host': self.ftp_server,
+            'username': self.ftp_username,
+        }
+
+        host, port = splitport(conn_config['host'])
+        if port is not None:
+            port = int(port)
+        conn_config.update({
+            'host': host,
+            'port': port,
+        })
+
         if self.private_key:
-            self._ssh = ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=None, private_key=self.private_key)
+            conn_config['private_key'] = self.private_key
+            conn_config['password'] = None
         else:
-            self._ssh = ssh.Connection(host=self.ftp_server, username=self.ftp_username, password=self.ftp_password)
+            conn_config['password'] = self.ftp_password
+
+        self._ssh = ssh.Connection(**conn_config)
         return self._ssh
 
     def close_connection(self):
@@ -394,14 +418,14 @@ class Command(BaseCommand):
             tables = list(set(all_tables) - set(blacklist_tables))
             args += tables
         os.system('%s %s > %s' % (getattr(settings, 'BACKUP_SQLDUMP_PATH', 'mysqldump'), ' '.join(args), outfile))
-        #append table structures of blacklist_tables 
+        #append table structures of blacklist_tables
         if blacklist_tables:
             all_tables = connection.introspection.get_table_list(connection.cursor())
             blacklist_tables = list(set(all_tables) and set(blacklist_tables))
             args = base_args + ['-d'] + blacklist_tables
             cmd = '%s %s >> %s' % (getattr(settings, 'BACKUP_SQLDUMP_PATH', 'mysqldump'), ' '.join(args), outfile)
             os.system(cmd)
-            
+
     def do_postgresql_backup(self, outfile):
         args = []
         if self.user:
