@@ -1,3 +1,4 @@
+import io
 from distutils.core import setup
 from setuptools import find_packages
 
@@ -5,6 +6,7 @@ setup(
     name='django-backup',
     version='2.0.0',
     description='A backup script for the Django admin',
+    long_description=io.open('README.rst', encoding='utf-8').read(),
     author='Dmitriy Kovalev, Michael Huynh, msaelices, Andy Baker, Chen Zhe, Chris Cohoat',
     author_email='andy@ixxy.co.uk',
     url='http://github.com/django-backup/django-backup',
