@@ -50,7 +50,6 @@ def between_interval(filename, start, end):
     given a filename and an interval, tell if it's between the interval
     '''
     d = get_date(filename)
-    #print start, filename, end
     if d > start and d <= end:
         return True
     else:
@@ -204,39 +203,39 @@ class Command(BaseCommand):
         self.directory_to_backup = getattr(settings, 'DIRECTORY_TO_BACKUP', settings.MEDIA_ROOT)
 
         if self.clean_rsync:
-            print 'cleaning broken rsync backups'
+            self.stdout.write('cleaning broken rsync backups')
             self.clean_broken_rsync()
         else:
             if self.clean_local_rsync:
-                print 'cleaning local broken rsync backups'
+                self.stdout.write('cleaning local broken rsync backups')
                 self.clean_local_broken_rsync()
 
             if self.clean_remote_rsync:
-                print 'cleaning remote broken rsync backups'
+                self.stdout.write('cleaning remote broken rsync backups')
                 self.clean_remote_broken_rsync()
 
         if self.clean_db:
-            print 'cleaning surplus database backups'
+            self.stdout.write('cleaning surplus database backups')
             self.clean_surplus_db()
 
         if self.clean_local_db:
-            print 'cleaning local surplus database backups'
+            self.stdout.write('cleaning local surplus database backups')
             self.clean_local_surplus_db()
 
         if self.clean_remote_db:
-            print 'cleaning remote surplus database backups'
+            self.stdout.write('cleaning remote surplus database backups')
             self.clean_remote_surplus_db()
 
         if self.clean_media:
-            print 'cleaning surplus media backups'
+            self.stdout.write('cleaning surplus media backups')
             self.clean_surplus_media()
 
         if self.clean_local_media:
-            print 'cleaning local surplus media backups'
+            self.stdout.write('cleaning local surplus media backups')
             self.clean_local_surplus_media()
 
         if self.clean_remote_media:
-            print 'cleaning remote surplus media backups'
+            self.stdout.write('cleaning remote surplus media backups')
             self.clean_remote_surplus_media()
 
         if not os.path.exists(self.backup_dir):
@@ -246,11 +245,11 @@ class Command(BaseCommand):
 
         # Doing backup
         if self.engine == 'django.db.backends.mysql':
-            print 'Doing Mysql backup to database %s into %s' % (self.db, outfile)
+            self.stdout.write('Doing Mysql backup to database %s into %s' % (self.db, outfile))
             self.do_mysql_backup(outfile)
         # TODO reinstate postgres support
         elif self.engine == 'django.db.backends.postgresql_psycopg2':
-            print 'Doing Postgresql backup to database %s into %s' % (self.db, outfile)
+            self.stdout.write('Doing Postgresql backup to database %s into %s' % (self.db, outfile))
             self.do_postgresql_backup(outfile)
         else:
             raise CommandError('Backup in %s engine not implemented' % self.engine)
@@ -258,7 +257,7 @@ class Command(BaseCommand):
         # Compressing backup
         if self.compress:
             compressed_outfile = outfile + '.gz'
-            print 'Compressing backup file %s to %s' % (outfile, compressed_outfile)
+            self.stdout.write('Compressing backup file %s to %s' % (outfile, compressed_outfile))
             self.do_compress(outfile, compressed_outfile)
             outfile = compressed_outfile
 
@@ -282,18 +281,18 @@ class Command(BaseCommand):
 
         # Sending mail with backups
         if self.email:
-            print "Sending e-mail with backups to '%s'" % self.email
+            self.stdout.write("Sending e-mail with backups to '%s'" % self.email)
             self.sendmail(settings.SERVER_EMAIL, [self.email], dir_outfiles + [outfile])
 
         if self.ftp:
-            print "Saving to remote server"
+            self.stdout.write("Saving to remote server")
             self.store_ftp(local_files=[os.path.join(os.getcwd(), x) for x in dir_outfiles + [outfile]])
 
     def compress_dir(self, directory, outfile):
-        print 'Backup directories ...'
+        self.stdout.write('Backup directories ...')
         command = 'cd %s && tar -czf %s *' % (directory, outfile)
-        print '=' * 70
-        print 'Running Command: %s' % command
+        self.stdout.write('=' * 70)
+        self.stdout.write('Running Command: %s' % command)
         os.system(command)
 
     def get_connection(self):
@@ -340,7 +339,7 @@ class Command(BaseCommand):
         tables = connection.introspection.django_table_names(only_existing=True)
         def check_table(table):
             return any(table.startswith('%s_' %app) for app in apps)
-        return filter(check_table, tables)
+        return list(filter(check_table, tables))
 
     def store_ftp(self, local_files=[]):
         sftp = self.get_connection()
@@ -351,36 +350,36 @@ class Command(BaseCommand):
                 pass
         for local_file in local_files:
             filename = os.path.split(local_file)[-1]
-            print 'Saving %s to remote server ' % local_file
+            self.stdout.write('Saving %s to remote server ' % local_file)
             sftp.put(local_file, os.path.join(self.remote_dir or '', filename))
         if self.delete_local:
             backups = os.listdir(self.backup_dir)
-            backups = filter(is_backup, backups)
+            backups = list(filter(is_backup, backups))
             backups.sort()
-            print '=' * 70
-            print '--cleanlocal, local db and media backups found: %s' % backups
+            self.stdout.write('=' * 70)
+            self.stdout.write('--cleanlocal, local db and media backups found: %s' % backups)
             remove_list = backups
-            print 'local db and media backups to clean %s' % remove_list
+            self.stdout.write('local db and media backups to clean %s' % remove_list)
             remove_all = ' '.join([os.path.join(self.backup_dir, i) for i in remove_list])
             if remove_all:
-                print '=' * 70
-                print 'cleaning up local db and media backups'
+                self.stdout.write('=' * 70)
+                self.stdout.write('cleaning up local db and media backups')
                 command = 'rm -r %s' % remove_all
-                print '=' * 70
-                print 'Running Command: %s' % command
+                self.stdout.write('=' * 70)
+                self.stdout.write('Running Command: %s' % command)
                 os.system(command)
             # remote(ftp server)
         elif self.no_local:
             to_remove = local_files
-            print '=' * 70
-            print '--nolocal, Local files to remove %s' % to_remove
+            self.stdout.write('=' * 70)
+            self.stdout.write('--nolocal, Local files to remove %s' % to_remove)
             remove_all = ' '.join(to_remove)
             if remove_all:
-                print '=' * 70
-                print 'cleaning up local backups'
+                self.stdout.write('=' * 70)
+                self.stdout.write('cleaning up local backups')
                 command = 'rm -r %s' % remove_all
-                print '=' * 70
-                print 'Running Command: %s' % command
+                self.stdout.write('=' * 70)
+                self.stdout.write('Running Command: %s' % command)
                 os.system(command)
 
     def sendmail(self, address_from, addresses_to, attachments):
@@ -446,51 +445,50 @@ class Command(BaseCommand):
         if table_args:
             table_args = '-a %s' %table_args
         pgdump_cmd = '%s %s %s > %s' % (pgdump_path, ' '.join(args), table_args or '--clean', outfile)
-        print pgdump_cmd
+        self.stdout.write(pgdump_cmd)
         os.system(pgdump_cmd)
 
     def clean_local_surplus_db(self):
         try:
             backups = os.listdir(self.backup_dir)
-            backups = filter(is_db_backup, backups)
+            backups = list(filter(is_db_backup, backups))
             backups.sort()
-            print '=' * 70
-            print 'local db backups found: %s' % backups
+            self.stdout.write('=' * 70)
+            self.stdout.write('local db backups found: %s' % backups)
             remove_list = decide_remove(backups, settings.BACKUP_DATABASE_COPIES)
-            print '=' * 70
-            print 'local db backups to clean %s' % remove_list
+            self.stdout.write('=' * 70)
+            self.stdout.write('local db backups to clean %s' % remove_list)
             remove_all = ' '.join([os.path.join(self.backup_dir, i) for i in remove_list])
             if remove_all:
-                print '=' * 70
-                print 'cleaning up local db backups'
+                self.stdout.write('=' * 70)
+                self.stdout.write('cleaning up local db backups')
                 command = 'rm %s' % remove_all
-                print '=' * 70
-                print 'Running Command: %s' % command
+                self.stdout.write('=' * 70)
+                self.stdout.write('Running Command: %s' % command)
                 os.system(command)
         except ImportError:
-            print 'cleaned nothing, because BACKUP_DATABASE_COPIES is missing'
+            self.stderr.writeln('cleaned nothing, because BACKUP_DATABASE_COPIES is missing')
 
     def clean_remote_surplus_db(self):
         try:
             sftp = self.get_connection()
-            backups = [i.strip() for i in sftp.execute('ls %s' % self.remote_dir)]
-            backups = filter(is_db_backup, backups)
+            backups = [i.strip() for i in sftp.listdir(self.remote_dir)]
+            backups = list(filter(is_db_backup, backups))
             backups.sort()
-            print '=' * 70
-            print 'remote db backups found: %s' % backups
+            self.stdout.write('=' * 70)
+            self.stdout.write('remote db backups found: %s' % backups)
             remove_list = decide_remove(backups, settings.BACKUP_DATABASE_COPIES)
-            print '=' * 70
-            print 'remote db backups to clean %s' % remove_list
-            remove_all_remote = ' '.join([os.path.join(self.remote_dir, i) for i in remove_list])
-            if remove_all_remote:
-                print '=' * 70
-                print 'cleaning up remote db backups'
-                command = 'rm %s' % remove_all_remote
-                print '=' * 70
-                print 'Running Command on remote server: %s' % command
-                sftp.execute(command)
+            self.stdout.write('=' * 70)
+            self.stdout.write('remote db backups to clean %s' % remove_list)
+            if remove_list:
+                self.stdout.write('=' * 70)
+                self.stdout.write('cleaning up remote db backups')
+                for file_ in remove_list:
+                    target_path = os.path.join(self.remote_dir, file_)
+                    self.stdout.write('Removing {}'.format(target_path))
+                    sftp.remove(target_path)
         except ImportError:
-            print 'cleaned nothing, because BACKUP_DATABASE_COPIES is missing'
+            self.stderr.writeln('cleaned nothing, because BACKUP_DATABASE_COPIES is missing')
 
     def clean_surplus_db(self):
         self.clean_local_surplus_db()
@@ -504,50 +502,49 @@ class Command(BaseCommand):
         try:
             # local(web server)
             backups = os.listdir(self.backup_dir)
-            backups = filter(is_media_backup, backups)
+            backups = list(filter(is_media_backup, backups))
             backups.sort()
-            print '=' * 70
-            print 'local media backups found: %s' % backups
+            self.stdout.write('=' * 70)
+            self.stdout.write('local media backups found: %s' % backups)
             remove_list = decide_remove(backups, settings.BACKUP_MEDIA_COPIES)
-            print '=' * 70
-            print 'local media backups to clean %s' % remove_list
+            self.stdout.write('=' * 70)
+            self.stdout.write('local media backups to clean %s' % remove_list)
             remove_all = ' '.join([os.path.join(self.backup_dir, i) for i in remove_list])
             if remove_all:
-                print '=' * 70
-                print 'cleaning up local media backups'
+                self.stdout.write('=' * 70)
+                self.stdout.write('cleaning up local media backups')
                 command = 'rm -r %s' % remove_all
-                print '=' * 70
-                print 'Running Command: %s' % command
+                self.stdout.write('=' * 70)
+                self.stdout.write('Running Command: %s' % command)
                 os.system(command)
         except ImportError:
-            print 'cleaned nothing, because BACKUP_MEDIA_COPIES is missing'
+            self.stderr.writeln('cleaned nothing, because BACKUP_MEDIA_COPIES is missing')
 
     def clean_remote_surplus_media(self):
         try:
             sftp = self.get_connection()
-            backups = [i.strip() for i in sftp.execute('ls %s' % self.remote_dir)]
-            backups = filter(is_media_backup, backups)
+            backups = [i.strip() for i in sftp.listdir(self.remote_dir)]
+            backups = list(filter(is_media_backup, backups))
             backups.sort()
-            print '=' * 70
-            print 'remote media backups found: %s' % backups
+            self.stdout.write('=' * 70)
+            self.stdout.write('remote media backups found: %s' % backups)
             remove_list = decide_remove(backups, settings.BACKUP_MEDIA_COPIES)
-            print '=' * 70
-            print 'remote media backups to clean %s' % remove_list
-            remove_all_remote = ' '.join([os.path.join(self.remote_dir, i) for i in remove_list])
-            if remove_all_remote:
-                print '=' * 70
-                print 'cleaning up remote media backups'
-                command = 'rm -r %s' % remove_all_remote
-                print '=' * 70
-                print 'Running Command on remote server: %s' % command
-                sftp.execute(command)
+            self.stdout.write('=' * 70)
+            self.stdout.write('remote media backups to clean %s' % remove_list)
+            if remove_list:
+                self.stdout.write('=' * 70)
+                self.stdout.write('cleaning up remote media backups')
+                for file_ in remove_list:
+                    target_path = os.path.join(self.remote_dir, file_)
+                    self.stdout.write('Removing {}'.format(target_path))
+                    sftp.remove(target_path)
         except ImportError:
-            print 'cleaned nothing, because BACKUP_MEDIA_COPIES is missing'
+            self.stderr.writeln('cleaned nothing, because BACKUP_MEDIA_COPIES is missing')
 
     def do_media_rsync_backup(self):
         #local media rsync backup
         if not self.delete_local and not self.no_local:
-            print 'Doing local media rsync backup'
+            self.stdout.write('Doing local media rsync backup')
             local_current_backup = os.path.join(self.backup_dir, 'current')
             local_backup_target = os.path.join(self.backup_dir, 'dir_%s' % (self.time_suffix))
             local_info = {
@@ -560,12 +557,12 @@ class Command(BaseCommand):
             local_mark_cmd = 'touch %(local_backup_target)s/%(rsync_flag)s' % local_info
             local_link_cmd = 'rm -f %(local_current_backup)s && ln -s %(local_backup_target)s %(local_current_backup)s' % local_info
             cmd = '\n'.join(['%s&&%s' % (local_rsync_cmd, local_mark_cmd), local_link_cmd])
-            print cmd
+            self.stdout.write(cmd)
             os.system(cmd)
 
         #remote media rsync backup
         if self.ftp:
-            print 'Doing remote media rsync backup'
+            self.stdout.write('Doing remote media rsync backup')
             host = '%s@%s' % (self.ftp_username, self.ftp_server)
             remote_current_backup = os.path.join(self.remote_dir, 'current')
             remote_backup_target = os.path.join(self.remote_dir, 'dir_%s' % (self.time_suffix))
@@ -580,7 +577,7 @@ class Command(BaseCommand):
             remote_mark_cmd = 'ssh %(host)s "touch %(remote_backup_target)s/%(rsync_flag)s"' % remote_info
             remote_link_cmd = 'ssh %(host)s "rm -f %(remote_current_backup)s && ln -s %(remote_backup_target)s %(remote_current_backup)s"' % remote_info
             cmd = '\n'.join(['%s&&%s' % (remote_rsync_cmd, remote_mark_cmd), remote_link_cmd])
-            print cmd
+            self.stdout.write(cmd)
             sftp = self.get_connection()
             try:
                 sftp.mkdir(self.remote_dir)
@@ -595,7 +592,7 @@ class Command(BaseCommand):
     def clean_remote_broken_rsync(self):
         sftp = self.get_connection()
         backups = [i.strip() for i in sftp.execute('ls %s' % self.remote_dir)]
-        backups = filter(is_media_backup, backups)
+        backups = list(filter(is_media_backup, backups))
         backups.sort()
         commands = []
         for backup in backups:
@@ -606,13 +603,13 @@ class Command(BaseCommand):
             commands.append(cmd)
 
         full_cmd = '\n'.join(commands)
-        print full_cmd
+        self.stdout.write(full_cmd)
         sftp.execute(full_cmd)
 
     def clean_local_broken_rsync(self):
         # local(web server)
         backups = os.listdir(self.backup_dir)
-        backups = filter(is_media_backup, backups)
+        backups = list(filter(is_media_backup, backups))
         backups.sort()
         commands = []
         for backup in backups:
@@ -622,5 +619,5 @@ class Command(BaseCommand):
             cmd = 'test -e %s||rm -rf %s' % (flag_file, backup_path)
             commands.append(cmd)
         full_cmd = '\n'.join(commands)
-        print full_cmd
+        self.stdout.write(full_cmd)
         os.system(full_cmd)

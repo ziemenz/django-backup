@@ -1,6 +1,5 @@
 import io
-from distutils.core import setup
-from setuptools import find_packages
+from setuptools import find_packages, setup
 
 setup(
     name='django-backup',
@@ -12,9 +11,11 @@ setup(
     url='http://github.com/django-backup/django-backup',
     packages=find_packages(exclude=('test_project',)),
     include_package_data=True,
+    install_requires=['pysftp'],
     classifiers=[
         'Programming Language :: Python',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.4',
         'Development Status :: 4 - Beta',
         'Framework :: Django',
         'Framework :: Django :: 1.7',
