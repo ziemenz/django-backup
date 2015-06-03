@@ -1,14 +1,12 @@
 django-backup
 =============
+
+.. image:: https://travis-ci.org/django-backup/django-backup.svg?branch=develop
+    :target: https://travis-ci.org/django-backup/django-backup
+
 http://github.com/django-backup/django-backup
 
 Backup, compress and restore database and media files. Transfer them via email or FTP and maintain a set number of dated versions on remote FTP server.
-
-Requirements
-------------
-
-My fork of Pysftp: https://github.com/andybak/Pysftp
-(a nice friendly wrapper around Paramiko: https://github.com/paramiko/paramiko)
 
 Authors
 -------
@@ -18,6 +16,7 @@ Authors
 * and also snippets from http://www.yashh.com/blog/2008/sep/05/django-database-backup-view/
 * with minor modifications by Michael Huynh (mike@mikexstudios.com) http://github.com/mikexstudios/django-backup
 * Major modifications in this fork by Andy Baker (andy@andybak.net and Chen Zhe (fruitschen@gmail.com)
+* Lots more improvements including tests and packaging by Horst Gutmann (https://zerokspot.com/weblog/)
 
 
 New Features in this fork
