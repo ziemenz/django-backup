@@ -120,6 +120,8 @@ class Command(BaseCommand):
             help='Compress dump file'),
         make_option('--directory', '-d', action='append', default=[], dest='directories',
             help='Destination Directory'),
+        make_option('--zipencrypt', '-z', action='store_true', default=False,
+            dest='zipencrypt', help='Compress and encrypt SQL dump file using zip'),
         make_option('--media', '-m', action='store_true', default=False, dest='media',
             help='Backup media dir'),
         make_option('--rsync', '-r', action='store_true', default=False, dest='rsync',
@@ -163,6 +165,8 @@ class Command(BaseCommand):
         self.ftp = options.get('ftp')
         self.compress = options.get('compress')
         self.directories = options.get('directories')
+        self.zipencrypt = options.get('zipencrypt')
+        self.encrypt_password = os.environ.get('BACKUP_PASSWORD')
         self.media = options.get('media')
         self.rsync = options.get('rsync')
         self.clean = options.get('clean')
@@ -201,6 +205,11 @@ class Command(BaseCommand):
         self.ftp_password = getattr(settings, 'BACKUP_FTP_PASSWORD', '')
         self.private_key = getattr(settings, 'BACKUP_FTP_PRIVATE_KEY', None)
         self.directory_to_backup = getattr(settings, 'DIRECTORY_TO_BACKUP', settings.MEDIA_ROOT)
+
+        if self.zipencrypt and not self.encrypt_password:
+            raise CommandError('Please specify a password for your backup file'
+                               ' using the BACKUP_PASSWORD environment'
+                               ' variable.')
 
         if self.clean_rsync:
             self.stdout.write('cleaning broken rsync backups')
@@ -260,6 +269,12 @@ class Command(BaseCommand):
             self.stdout.write('Compressing backup file %s to %s' % (outfile, compressed_outfile))
             self.do_compress(outfile, compressed_outfile)
             outfile = compressed_outfile
+
+        if self.zipencrypt:
+            zip_encrypted_outfile = "{}.zip".format(outfile)
+            self.stdout.write('Zipping and cncrypting backup file {} to {}'.format(outfile, zip_encrypted_outfile))
+            self.do_encrypt(outfile, zip_encrypted_outfile)
+            outfile = zip_encrypted_outfile
 
         # Backing up media directories,
         if self.media:
@@ -394,6 +409,10 @@ class Command(BaseCommand):
 
     def do_compress(self, infile, outfile):
         os.system('gzip --stdout %s > %s' % (infile, outfile))
+        os.system('rm %s' % infile)
+
+    def do_encrypt(self, infile, outfile):
+        os.system('zip -P %s %s %s' % (self.encrypt_password, outfile, infile))
         os.system('rm %s' % infile)
 
     def do_mysql_backup(self, outfile):
