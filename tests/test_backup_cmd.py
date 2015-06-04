@@ -1,8 +1,10 @@
 import datetime
+import os
 import pytest
 import re
+import subprocess
 
-from django.core.management import call_command
+from django.core.management import call_command, CommandError
 
 
 def test_simple_backup_generation(tmpdir, settings, db):
@@ -18,6 +20,30 @@ def test_compressed_backup_generation(tmpdir, settings, db):
     assert len(tmpdir.listdir()) == 1
     assert re.match(r'backup_\d{8}-\d{6}\.sql\.gz',
                     tmpdir.listdir()[0].basename)
+
+
+def test_zipencrypt_without_password(tmpdir, settings, db):
+    """
+    If you don't specify a password for the zipencrypt option, the call should
+    fail with a nice error message.
+    """
+    settings.BACKUP_LOCAL_DIRECTORY = str(tmpdir)
+    os.environ['BACKUP_PASSWORD'] = ''
+    with pytest.raises(CommandError):
+        call_command('backup', zipencrypt=True)
+
+
+def test_zipencrypt_of_backup(tmpdir, settings, db):
+    settings.BACKUP_LOCAL_DIRECTORY = str(tmpdir)
+    os.environ['BACKUP_PASSWORD'] = 'password'
+    call_command('backup', zipencrypt=True)
+    assert len(tmpdir.listdir()) == 1
+    file_ = tmpdir.listdir()[0]
+    assert re.match(r'backup_\d{8}-\d{6}\.sql\.zip',
+                    file_.basename)
+    with tmpdir.as_cwd():
+        subprocess.check_call(['unzip', '-P', 'password', file_.basename])
+        assert len(tmpdir.listdir()) == 2
 
 
 def test_backup_sftp_upload(tmpdir, settings, db, sftpserver):

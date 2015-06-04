@@ -44,6 +44,11 @@ Supported options for manage.py backup
     default=False
     Compress SQL dump file
 
+    --zipencrypt -z
+    default=False
+    Uses zip to package the backup and encrypts it with a password
+    provided in the BACKUP_PASSWORD environment variable.
+
     --ftp -f
     default=False
     Store backup on remote FTP server
