@@ -2,90 +2,75 @@ import os
 import time
 from optparse import make_option
 from tempfile import gettempdir
-try:
-    from urllib.parse import splitport
-except ImportError:
-    from urllib import splitport
 
 from django.core.management.base import BaseCommand, CommandError
-from django.conf import settings
 
-import pysftp as ssh
-
-from .backup import TIME_FORMAT
-from .backup import is_db_backup
-from .backup import is_media_backup
+from django_backup.utils import BaseBackupCommand, TIME_FORMAT, is_db_backup, is_media_backup
 
 
-class Command(BaseCommand):
+class Command(BaseBackupCommand):
+    
     help = "Restores latest backup."
     option_list = BaseCommand.option_list + (
-        make_option('--media', '-m', action='store_true', default=False, dest='media',
-            help='Restore media dir'),
+        make_option(
+            '--media', '-m',
+            action='store_true', default=False, dest='media',
+            help='Restore media dir'
+        ),
     )
 
-    def _time_suffix(self):
+    @staticmethod
+    def _time_suffix():
         return time.strftime(TIME_FORMAT)
 
     def handle(self, *args, **options):
-        try:
-            self.engine = settings.DATABASES['default']['ENGINE']
-            self.db = settings.DATABASES['default']['NAME']
-            self.user = settings.DATABASES['default']['USER']
-            self.passwd = settings.DATABASES['default']['PASSWORD']
-            self.host = settings.DATABASES['default']['HOST']
-            self.port = settings.DATABASES['default']['PORT']
-        except NameError:
-            self.engine = settings.DATABASE_ENGINE
-            self.db = settings.DATABASE_NAME
-            self.user = settings.DATABASE_USER
-            self.passwd = settings.DATABASE_PASSWORD
-            self.host = settings.DATABASE_HOST
-            self.port = settings.DATABASE_PORT
 
-        self.backup_dir = settings.BACKUP_LOCAL_DIRECTORY
-        self.remote_dir = settings.RESTORE_FROM_FTP_DIRECTORY or ''
-        self.ftp_server = settings.BACKUP_FTP_SERVER
-        self.ftp_username = settings.BACKUP_FTP_USERNAME
-        self.ftp_password = settings.BACKUP_FTP_PASSWORD
         self.restore_media = options.get('media')
-        self.directory_to_backup = getattr(settings, 'DIRECTORY_TO_BACKUP', settings.MEDIA_ROOT)
-
         self.stdout.write('Connecting to %s...' % self.ftp_server)
         sftp = self.get_connection()
         self.stdout.write('Connected.')
-        backups = [i.strip() for i in sftp.listdir(self.remote_dir)]
+        try:
+            dir_list = sftp.listdir(self.remote_restore_dir)
+        except IOError:
+            raise CommandError("Remote directory %s does not exist" % self.remote_restore_dir)
+        backups = [i.strip() for i in dir_list]
         db_backups = list(filter(is_db_backup, backups))
         db_backups.sort()
+        
         if self.restore_media:
             media_backups = list(filter(is_media_backup, backups))
             media_backups.sort()
+            media_remote = media_backups[-1]
+        else:
+            media_remote = None
 
         self.tempdir = gettempdir()
 
         db_remote = db_backups[-1]
-        if self.restore_media:
-            media_remote = media_backups[-1]
-
+        
         db_local = os.path.join(self.tempdir, db_remote)
         self.stdout.write('Fetching database %s...' % db_remote)
-        sftp.get(os.path.join(self.remote_dir, db_remote), db_local)
+        sftp.get(os.path.join(self.remote_restore_dir, db_remote), db_local)
         self.stdout.write('Uncompressing database...')
         uncompressed = self.uncompress(db_local)
+        
         if uncompressed is 0:
             sql_local = db_local[:-3]
         else:
             sql_local = db_local
+            
         if self.restore_media:
             self.stdout.write('Fetching media %s...' % media_remote)
             media_local = os.path.join(self.tempdir, media_remote)
-            media_remote_full_path = os.path.join(self.remote_dir, media_remote)
-            #check if the media is compressed or a folder
+            media_remote_full_path = os.path.join(self.remote_restore_dir, media_remote)
+            
+            # Check if the media is compressed or a folder
             cmd = 'if [[ -d "%s" ]]; then echo 1; else echo 0; fi'
             is_folder = int(sftp.execute(cmd % media_remote_full_path)[0])
+            
             if is_folder == 1:
                 media_dir = os.path.join(media_remote_full_path, "media")
-                #A trailing slash to transfer only the contents of the folder
+                # A trailing slash to transfer only the contents of the folder
                 remote_rsync = '%s@%s:%s/' % (self.ftp_username, self.ftp_server, media_dir)
                 rsync_restore_cmd = 'rsync -az %s %s' % (remote_rsync, self.directory_to_backup)
                 self.stdout.write('Running rsync restore command: ', rsync_restore_cmd)
@@ -105,33 +90,13 @@ class Command(BaseCommand):
         else:
             raise CommandError('Backup in %s engine not implemented' % self.engine)
 
-    def get_connection(self):
-        '''
-        get the ssh connection to the remote server.
-        '''
-        conn_config = {
-            'host': self.ftp_server,
-            'username': self.ftp_username,
-            'password': self.ftp_password,
-        }
-
-        host, port = splitport(conn_config['host'])
-        if port is not None:
-            port = int(port)
-        conn_config.update({
-            'host': host,
-            'port': port,
-        })
-
-        return ssh.Connection(**conn_config)
-
-    def uncompress(self, file):
-        cmd = 'cd %s;gzip -df %s' % (self.tempdir, file)
+    def uncompress(self, filename):
+        cmd = 'cd %s;gzip -df %s' % (self.tempdir, filename)
         self.stdout.write('\t%s' % cmd)
         return os.system(cmd)
 
-    def uncompress_media(self, file):
-        cmd = u'tar -C %s -xzf %s' % (self.directory_to_backup, file)
+    def uncompress_media(self, filename):
+        cmd = u'tar -C %s -xzf %s' % (self.directory_to_backup, filename)
         self.stdout.write('\t%s' % cmd)
         os.system(cmd)
 

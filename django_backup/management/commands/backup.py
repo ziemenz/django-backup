@@ -1,155 +1,126 @@
-import calendar
 import os
 import time
 from copy import copy
 from datetime import datetime
-from datetime import timedelta
 from optparse import make_option
-import re
-try:
-    from urllib.parse import splitport
-except ImportError:
-    from urllib import splitport
+
+from django_backup.utils import (
+    GOOD_RSYNC_FLAG,
+    TIME_FORMAT,
+    decide_remove,
+    is_db_backup,
+    is_media_backup,
+    is_backup,
+    BaseBackupCommand,
+)
+
 
 from django.core.management.base import BaseCommand, CommandError
 from django.core.mail import EmailMessage
 from django.conf import settings
 from django.db import connection
 
-import pysftp as ssh
-
-TIME_FORMAT = '%Y%m%d-%H%M%S'
-regex = re.compile(r'(\d){8}-(\d){6}')
-GOOD_RSYNC_FLAG = '__good_backup'
-
-
-def is_db_backup(filename):
-    return filename.startswith('backup_')
-
-
-def is_media_backup(filename):
-    return filename.startswith('dir_')
-
-
-def is_backup(filename):
-    return (is_db_backup(filename) or is_media_backup(filename))
-
-
-def get_date(filename):
-    '''
-    given the name of the backup file, return the datetime it was created.
-    '''
-    result = regex.search(filename)
-    date_str = result.group()
-    d = datetime.strptime(date_str, TIME_FORMAT)
-    return d
-
-
-def between_interval(filename, start, end):
-    '''
-    given a filename and an interval, tell if it's between the interval
-    '''
-    d = get_date(filename)
-    if d > start and d <= end:
-        return True
-    else:
-        return False
-
-
-def reserve_interval(backups, type, num):
-    '''
-    given a list of backup filenames, interval type(monthly, weekly, daily),
-    and the number of backups to keep, return a list of filenames to reserve.
-    '''
-    result = []
-    now = datetime.now()
-    if type == 'monthly':
-        delta = timedelta(30)
-        interval_end = datetime(now.year, now.month, 1)  # begin of the month
-        interval_start = interval_end - delta
-    elif type == 'weekly':
-        delta = timedelta(7)
-        weekday = calendar.weekday(now.year, now.month, now.day)
-        weekday_delta = timedelta(weekday)
-        interval_end = datetime(now.year, now.month, now.day) - weekday_delta  # begin of the week
-        interval_start = interval_end - delta
-    elif type == 'daily':
-        delta = timedelta(1)
-        interval_end = datetime(now.year, now.month, now.day) + delta
-        interval_start = interval_end - delta
-    elif type == 'hourly':
-        delta = timedelta(minutes=60)
-        interval_end = datetime(now.year, now.month, now.day, now.hour) + delta
-        interval_start = interval_end - delta
-    for i in range(1, num + 1):
-        for backup in backups:
-            if between_interval(backup, interval_start, interval_end):
-                result.append(backup)
-                break  # reserve only one backup per interval
-        interval_end = interval_end - delta
-        interval_start = interval_start - delta
-    return result
-
-
-def decide_remove(backups, config):
-    '''
-    given a list of backup filenames and setttings, decide the files to be deleted.
-    '''
-    reserve = []
-    remove_list = []
-    reserve += reserve_interval(backups, 'monthly', config['monthly'])
-    reserve += reserve_interval(backups, 'weekly', config['weekly'])
-    reserve += reserve_interval(backups, 'daily', config['daily'])
-    if config.get('hourly', 0):
-        reserve += reserve_interval(backups, 'hourly', config.get('hourly', 0))
-    for i in backups:
-        if i not in reserve:
-            remove_list.append(i)
-    return remove_list
-
 
 # Based on: http://www.djangosnippets.org/snippets/823/
 # Based on: http://www.yashh.com/blog/2008/sep/05/django-database-backup-view/
-class Command(BaseCommand):
+class Command(BaseBackupCommand):
+    
     option_list = BaseCommand.option_list + (
-        make_option('--email', default=None, dest='email',
-            help='Sends email with attached dump file'),
-        make_option('--ftp', '-f', action='store_true', default=False, dest='ftp',
-            help='Backup file via FTP'),
-        make_option('--compress', '-c', action='store_true', default=False, dest='compress',
-            help='Compress dump file'),
-        make_option('--directory', '-d', action='append', default=[], dest='directories',
-            help='Destination Directory'),
-        make_option('--zipencrypt', '-z', action='store_true', default=False,
-            dest='zipencrypt', help='Compress and encrypt SQL dump file using zip'),
-        make_option('--media', '-m', action='store_true', default=False, dest='media',
-            help='Backup media dir'),
-        make_option('--rsync', '-r', action='store_true', default=False, dest='rsync',
-            help='Backup media dir with rsync'),
-        make_option('--cleandb', action='store_true', default=False, dest='clean_db',
-            help='Clean up surplus database backups'),
-        make_option('--cleanmedia', action='store_true', default=False, dest='clean_media',
-            help='Clean up surplus media backups'),
-        make_option('--cleanrsync', action='store_true', default=False, dest='clean_rsync',
-            help='Clean up broken rsync backups'),
-        make_option('--nolocal', action='store_true', default=False, dest='no_local',
-            help='Reserve local backup or not'),
-        make_option('--deletelocal', action='store_true', default=False, dest='delete_local',
-            help='Delete all local backups'),
-        make_option('--cleanlocaldb', action='store_true', default=False, dest='clean_local_db',
-            help='Clean up surplus local database backups'),
-        make_option('--cleanremotedb', action='store_true', default=False, dest='clean_remote_db',
-            help='Clean up surplus remote database backups'),
-        make_option('--cleanlocalmedia', action='store_true', default=False, dest='clean_local_media',
-            help='Clean up surplus local media backups'),
-        make_option('--cleanremotemedia', action='store_true', default=False, dest='clean_remote_media',
-            help='Clean up surplus remote media backups'),
-        make_option('--cleanlocalrsync', action='store_true', default=False, dest='clean_local_rsync',
-            help='Clean up local broken rsync backups'),
-        make_option('--cleanremotersync', action='store_true', default=False, dest='clean_remote_rsync',
-            help='Clean up remote broken rsync backups'),
-        make_option('--application', '-a', action='append', default=[], dest='apps',
-            help='Optionally only back up certain Djano apps'),
+        make_option(
+            '--email',
+            default=None, dest='email',
+            help='Sends email with attached dump file'
+        ),
+        make_option(
+            '--ftp', '-f',
+            action='store_true', default=False, dest='ftp',
+            help='Backup file via FTP'
+        ),
+        make_option(
+            '--compress', '-c',
+            action='store_true', default=False, dest='compress',
+            help='Compress dump file'
+        ),
+        make_option(
+            '--directory', '-d',
+            action='append', default=[], dest='directories',
+            help='Destination Directory'
+        ),
+        make_option(
+            '--zipencrypt', '-z',
+            action='store_true', default=False,
+            dest='zipencrypt', help='Compress and encrypt SQL dump file using zip'
+        ),
+        make_option(
+            '--media', '-m',
+            action='store_true', default=False, dest='media',
+            help='Backup media dir'
+        ),
+        make_option(
+            '--rsync', '-r',
+            action='store_true', default=False, dest='rsync',
+            help='Backup media dir with rsync'
+        ),
+        make_option(
+            '--cleandb',
+            action='store_true', default=False, dest='clean_db',
+            help='Clean up surplus database backups'
+        ),
+        make_option(
+            '--cleanmedia',
+            action='store_true', default=False, dest='clean_media',
+            help='Clean up surplus media backups'
+        ),
+        make_option(
+            '--cleanrsync',
+            action='store_true', default=False, dest='clean_rsync',
+            help='Clean up broken rsync backups'
+        ),
+        make_option(
+            '--nolocal',
+            action='store_true', default=False, dest='no_local',
+            help='Reserve local backup or not'
+        ),
+        make_option(
+            '--deletelocal',
+            action='store_true', default=False, dest='delete_local',
+            help='Delete all local backups'
+        ),
+        make_option(
+            '--cleanlocaldb',
+            action='store_true', default=False, dest='clean_local_db',
+            help='Clean up surplus local database backups'
+        ),
+        make_option(
+            '--cleanremotedb',
+            action='store_true', default=False, dest='clean_remote_db',
+            help='Clean up surplus remote database backups'
+        ),
+        make_option(
+            '--cleanlocalmedia',
+            action='store_true', default=False, dest='clean_local_media',
+            help='Clean up surplus local media backups'
+        ),
+        make_option(
+            '--cleanremotemedia',
+            action='store_true', default=False, dest='clean_remote_media',
+            help='Clean up surplus remote media backups'
+        ),
+        make_option(
+            '--cleanlocalrsync',
+            action='store_true', default=False, dest='clean_local_rsync',
+            help='Clean up local broken rsync backups'
+        ),
+        make_option(
+            '--cleanremotersync',
+            action='store_true', default=False, dest='clean_remote_rsync',
+            help='Clean up remote broken rsync backups'
+        ),
+        make_option(
+            '--application', '-a',
+            action='append', default=[], dest='apps',
+            help='Optionally only back up certain Django apps'
+        ),
     )
     help = "Backup database. Only Mysql and Postgresql engines are implemented"
 
@@ -172,44 +143,22 @@ class Command(BaseCommand):
         self.clean = options.get('clean')
         self.clean_db = options.get('clean_db')
         self.clean_media = options.get('clean_media')
-        self.clean_rsync = options.get('clean_rsync') and self.rsync #only when rsync is True
+        self.clean_rsync = options.get('clean_rsync') and self.rsync  # Only when rsync is True
         self.clean_local_db = options.get('clean_local_db')
         self.clean_remote_db = options.get('clean_remote_db')
         self.clean_local_media = options.get('clean_local_media')
         self.clean_remote_media = options.get('clean_remote_media')
-        self.clean_local_rsync = options.get('clean_local_rsync') and self.rsync #only when rsync is True
-        self.clean_remote_rsync = options.get('clean_remote_rsync') and self.rsync #only when rsync is True
+        self.clean_local_rsync = options.get('clean_local_rsync') and self.rsync  # Only when rsync is True
+        self.clean_remote_rsync = options.get('clean_remote_rsync') and self.rsync  # Only when rsync is True
         self.no_local = options.get('no_local')
         self.delete_local = options.get('delete_local')
         self.apps = options.get('apps')
 
-        try:
-            self.engine = settings.DATABASES['default']['ENGINE']
-            self.db = settings.DATABASES['default']['NAME']
-            self.user = settings.DATABASES['default']['USER']
-            self.passwd = settings.DATABASES['default']['PASSWORD']
-            self.host = settings.DATABASES['default']['HOST']
-            self.port = settings.DATABASES['default']['PORT']
-        except NameError:
-            self.engine = settings.DATABASE_ENGINE
-            self.db = settings.DATABASE_NAME
-            self.user = settings.DATABASE_USER
-            self.passwd = settings.DATABASE_PASSWORD
-            self.host = settings.DATABASE_HOST
-            self.port = settings.DATABASE_PORT
-
-        self.backup_dir = getattr(settings, 'BACKUP_LOCAL_DIRECTORY', os.getcwd())
-        self.remote_dir = getattr(settings, 'BACKUP_FTP_DIRECTORY', '')
-        self.ftp_server = getattr(settings, 'BACKUP_FTP_SERVER', '')
-        self.ftp_username = getattr(settings, 'BACKUP_FTP_USERNAME', '')
-        self.ftp_password = getattr(settings, 'BACKUP_FTP_PASSWORD', '')
-        self.private_key = getattr(settings, 'BACKUP_FTP_PRIVATE_KEY', None)
-        self.directory_to_backup = getattr(settings, 'DIRECTORY_TO_BACKUP', settings.MEDIA_ROOT)
-
         if self.zipencrypt and not self.encrypt_password:
-            raise CommandError('Please specify a password for your backup file'
-                               ' using the BACKUP_PASSWORD environment'
-                               ' variable.')
+            raise CommandError(
+                'Please specify a password for your backup file'
+                ' using the BACKUP_PASSWORD environment variable.'
+            )
 
         if self.clean_rsync:
             self.stdout.write('cleaning broken rsync backups')
@@ -290,7 +239,7 @@ class Command(BaseCommand):
                 self.do_media_rsync_backup()
             else:
                 # Backup all the directories in one file.
-                all_outfile = os.path.join(self.backup_dir, 'dir_%s.tar.gz' % (self.time_suffix))
+                all_outfile = os.path.join(self.backup_dir, 'dir_%s.tar.gz' % self.time_suffix)
                 self.compress_dir(all_directories, all_outfile)
                 dir_outfiles.append(all_outfile)
 
@@ -310,54 +259,33 @@ class Command(BaseCommand):
         self.stdout.write('Running Command: %s' % command)
         os.system(command)
 
-    def get_connection(self):
-        '''
-        get the ssh connection to the remote server.
-        '''
-        if getattr(self, '_ssh', None):
-            return self._ssh
-
-        conn_config = {
-            'host': self.ftp_server,
-            'username': self.ftp_username,
-        }
-
-        host, port = splitport(conn_config['host'])
-        if port is not None:
-            port = int(port)
-        conn_config.update({
-            'host': host,
-            'port': port,
-        })
-
-        if self.private_key:
-            conn_config['private_key'] = self.private_key
-            conn_config['password'] = None
-        else:
-            conn_config['password'] = self.ftp_password
-
-        self._ssh = ssh.Connection(**conn_config)
-        return self._ssh
-
-    def close_connection(self):
-        if getattr(self, '_ssh', None):
-            self._ssh.close()
-
-    def get_blacklist_tables(self):
-        '''
-        exclude BACKUP_TABLES_BLACKLIST if it's defined.
-        '''
+    @staticmethod
+    def get_blacklist_tables():
+        """
+        Exclude BACKUP_TABLES_BLACKLIST if it's defined.
+        """
         return getattr(settings, 'BACKUP_TABLES_BLACKLIST', [])
 
-    def get_tables_for_apps(self, *apps):
-        '''Get table names for all for the given applications.'''
+    @staticmethod
+    def get_tables_for_apps(*apps):
+        """
+        Get table names for all for the given applications.
+        """
+        
         tables = connection.introspection.django_table_names(only_existing=True)
+        
         def check_table(table):
-            return any(table.startswith('%s_' %app) for app in apps)
+            return any(table.startswith('%s_' % app) for app in apps)
+        
         return list(filter(check_table, tables))
 
-    def store_ftp(self, local_files=[]):
+    def store_ftp(self, local_files=None):
+        
+        if not local_files:
+            local_files = []
+            
         sftp = self.get_connection()
+        
         if self.remote_dir:
             try:
                 sftp.mkdir(self.remote_dir)
@@ -397,7 +325,8 @@ class Command(BaseCommand):
                 self.stdout.write('Running Command: %s' % command)
                 os.system(command)
 
-    def sendmail(self, address_from, addresses_to, attachments):
+    @staticmethod
+    def sendmail(address_from, addresses_to, attachments):
         subject = "Your DB-backup for " + datetime.now().strftime("%d %b %Y")
         body = "Timestamp of the backup is " + datetime.now().strftime("%d %b %Y")
 
@@ -407,7 +336,8 @@ class Command(BaseCommand):
             email.attach_file(attachment)
         email.send()
 
-    def do_compress(self, infile, outfile):
+    @staticmethod
+    def do_compress(infile, outfile):
         os.system('gzip --stdout %s > %s' % (infile, outfile))
         os.system('rm %s' % infile)
 
@@ -436,7 +366,8 @@ class Command(BaseCommand):
             tables = list(set(all_tables) - set(blacklist_tables))
             args += tables
         os.system('%s %s > %s' % (getattr(settings, 'BACKUP_SQLDUMP_PATH', 'mysqldump'), ' '.join(args), outfile))
-        #append table structures of blacklist_tables
+        
+        # Append table structures of blacklist_tables
         if blacklist_tables:
             all_tables = connection.introspection.get_table_list(connection.cursor())
             blacklist_tables = list(set(all_tables) and set(blacklist_tables))
@@ -459,10 +390,10 @@ class Command(BaseCommand):
         if self.passwd:
             os.environ['PGPASSWORD'] = self.passwd
         table_args = ' '.join(
-            '-t %s '%table for table in self.get_tables_for_apps(*self.apps)
+            '-t %s ' % table for table in self.get_tables_for_apps(*self.apps)
         )
         if table_args:
-            table_args = '-a %s' %table_args
+            table_args = '-a %s' % table_args
         pgdump_cmd = '%s %s %s > %s' % (pgdump_path, ' '.join(args), table_args or '--clean', outfile)
         self.stdout.write(pgdump_cmd)
         os.system(pgdump_cmd)
@@ -561,11 +492,13 @@ class Command(BaseCommand):
             self.stderr.writeln('cleaned nothing, because BACKUP_MEDIA_COPIES is missing')
 
     def do_media_rsync_backup(self):
-        #local media rsync backup
+        
+        # Local media rsync backup
+        
         if not self.delete_local and not self.no_local:
             self.stdout.write('Doing local media rsync backup')
             local_current_backup = os.path.join(self.backup_dir, 'current')
-            local_backup_target = os.path.join(self.backup_dir, 'dir_%s' % (self.time_suffix))
+            local_backup_target = os.path.join(self.backup_dir, 'dir_%s' % self.time_suffix)
             local_info = {
                 'local_current_backup': local_current_backup,
                 'all_directories': self.all_directories,
@@ -579,12 +512,13 @@ class Command(BaseCommand):
             self.stdout.write(cmd)
             os.system(cmd)
 
-        #remote media rsync backup
+        # Remote media rsync backup
+        
         if self.ftp:
             self.stdout.write('Doing remote media rsync backup')
             host = '%s@%s' % (self.ftp_username, self.ftp_server)
             remote_current_backup = os.path.join(self.remote_dir, 'current')
-            remote_backup_target = os.path.join(self.remote_dir, 'dir_%s' % (self.time_suffix))
+            remote_backup_target = os.path.join(self.remote_dir, 'dir_%s' % self.time_suffix)
             remote_info = {
                 'remote_current_backup': remote_current_backup,
                 'all_directories': self.all_directories,
@@ -592,9 +526,11 @@ class Command(BaseCommand):
                 'remote_backup_target': remote_backup_target,
                 'rsync_flag': GOOD_RSYNC_FLAG,
             }
+            
             remote_rsync_cmd = 'rsync -az --copy-dirlinks --link-dest=%(remote_current_backup)s %(all_directories)s %(host)s:%(remote_backup_target)s' % remote_info
             remote_mark_cmd = 'ssh %(host)s "touch %(remote_backup_target)s/%(rsync_flag)s"' % remote_info
             remote_link_cmd = 'ssh %(host)s "rm -f %(remote_current_backup)s && ln -s %(remote_backup_target)s %(remote_current_backup)s"' % remote_info
+            
             cmd = '\n'.join(['%s&&%s' % (remote_rsync_cmd, remote_mark_cmd), remote_link_cmd])
             self.stdout.write(cmd)
             sftp = self.get_connection()
@@ -615,7 +551,7 @@ class Command(BaseCommand):
         backups.sort()
         commands = []
         for backup in backups:
-            #find the GOOD_RSYNC_FLAG file in the backup dir
+            # Find the GOOD_RSYNC_FLAG file in the backup dir
             backup_path = os.path.join(self.remote_dir, backup)
             flag_file = os.path.join(backup_path, GOOD_RSYNC_FLAG)
             cmd = 'test -e %s||rm -rf %s' % (flag_file, backup_path)
@@ -632,7 +568,7 @@ class Command(BaseCommand):
         backups.sort()
         commands = []
         for backup in backups:
-            #find the GOOD_RSYNC_FLAG file in the backup dir
+            # Find the GOOD_RSYNC_FLAG file in the backup dir
             backup_path = os.path.join(self.backup_dir, backup)
             flag_file = os.path.join(backup_path, GOOD_RSYNC_FLAG)
             cmd = 'test -e %s||rm -rf %s' % (flag_file, backup_path)
