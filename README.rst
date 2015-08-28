@@ -56,6 +56,7 @@ Supported options for manage.py backup
     --no-database -d
     default=False
     Don't restore the database from the remote server
+    (useful if you just want the media)
 
     --media -m
     default=False
