@@ -73,7 +73,7 @@ class Command(BaseBackupCommand):
                 # A trailing slash to transfer only the contents of the folder
                 remote_rsync = '%s@%s:%s/' % (self.ftp_username, self.ftp_server, media_dir)
                 rsync_restore_cmd = 'rsync -az %s %s' % (remote_rsync, self.directory_to_backup)
-                self.stdout.write('Running rsync restore command: ', rsync_restore_cmd)
+                self.stdout.write('Running rsync restore command: %s' % rsync_restore_cmd)
                 os.system(rsync_restore_cmd)
             else:
                 sftp.get(media_remote_full_path, media_local)
