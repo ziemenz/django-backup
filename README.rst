@@ -53,9 +53,9 @@ Supported options for manage.py backup
     default=False
     Store backup on remote FTP server
 
-    --database -d
-    default=True
-    Restore the database from the remote server
+    --no-database -d
+    default=False
+    Don't restore the database from the remote server
 
     --media -m
     default=False
