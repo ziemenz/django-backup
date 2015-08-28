@@ -9,13 +9,18 @@ from django_backup.utils import BaseBackupCommand, TIME_FORMAT, is_db_backup, is
 
 
 class Command(BaseBackupCommand):
-    
+
     help = "Restores latest backup."
     option_list = BaseCommand.option_list + (
         make_option(
             '--media', '-m',
             action='store_true', default=False, dest='media',
             help='Restore media dir'
+        ),
+        make_option(
+            '--database', '-d',
+            action='store_true', default=True, dest='database',
+            help='Restore database'
         ),
     )
 
@@ -26,6 +31,7 @@ class Command(BaseBackupCommand):
     def handle(self, *args, **options):
 
         self.restore_media = options.get('media')
+        self.restore_database = options.get('database')
         self.stdout.write('Connecting to %s...' % self.ftp_server)
         sftp = self.get_connection()
         self.stdout.write('Connected.')
@@ -36,7 +42,7 @@ class Command(BaseBackupCommand):
         backups = [i.strip() for i in dir_list]
         db_backups = list(filter(is_db_backup, backups))
         db_backups.sort()
-        
+
         if self.restore_media:
             media_backups = list(filter(is_media_backup, backups))
             media_backups.sort()
@@ -46,28 +52,29 @@ class Command(BaseBackupCommand):
 
         self.tempdir = gettempdir()
 
-        db_remote = db_backups[-1]
-        
-        db_local = os.path.join(self.tempdir, db_remote)
-        self.stdout.write('Fetching database %s...' % db_remote)
-        sftp.get(os.path.join(self.remote_restore_dir, db_remote), db_local)
-        self.stdout.write('Uncompressing database...')
-        uncompressed = self.uncompress(db_local)
-        
-        if uncompressed is 0:
-            sql_local = db_local[:-3]
-        else:
-            sql_local = db_local
-            
+        if self.restore_database:
+            db_remote = db_backups[-1]
+
+            db_local = os.path.join(self.tempdir, db_remote)
+            self.stdout.write('Fetching database %s...' % db_remote)
+            sftp.get(os.path.join(self.remote_restore_dir, db_remote), db_local)
+            self.stdout.write('Uncompressing database...')
+            uncompressed = self.uncompress(db_local)
+
+            if uncompressed is 0:
+                sql_local = db_local[:-3]
+            else:
+                sql_local = db_local
+
         if self.restore_media:
             self.stdout.write('Fetching media %s...' % media_remote)
             media_local = os.path.join(self.tempdir, media_remote)
             media_remote_full_path = os.path.join(self.remote_restore_dir, media_remote)
-            
+
             # Check if the media is compressed or a folder
             cmd = 'if [[ -d "%s" ]]; then echo 1; else echo 0; fi'
             is_folder = int(sftp.execute(cmd % media_remote_full_path)[0])
-            
+
             if is_folder == 1:
                 media_dir = os.path.join(media_remote_full_path, "media")
                 # A trailing slash to transfer only the contents of the folder
@@ -80,15 +87,16 @@ class Command(BaseBackupCommand):
                 self.stdout.write('Uncompressing media...')
                 self.uncompress_media(media_local)
         # Doing restore
-        if self.engine == 'django.db.backends.mysql':
-            self.stdout.write('Doing Mysql restore to database %s from %s...' % (self.db, sql_local))
-            self.mysql_restore(sql_local)
-        # TODO reinstate postgres support
-        elif self.engine == 'django.db.backends.postgresql_psycopg2':
-            self.stdout.write('Doing Postgresql restore to database %s from %s...' % (self.db, sql_local))
-            self.posgresql_restore(sql_local)
-        else:
-            raise CommandError('Backup in %s engine not implemented' % self.engine)
+        if self.restore_database:
+            if self.engine == 'django.db.backends.mysql':
+                self.stdout.write('Doing Mysql restore to database %s from %s...' % (self.db, sql_local))
+                self.mysql_restore(sql_local)
+            # TODO reinstate postgres support
+            elif self.engine == 'django.db.backends.postgresql_psycopg2':
+                self.stdout.write('Doing Postgresql restore to database %s from %s...' % (self.db, sql_local))
+                self.posgresql_restore(sql_local)
+            else:
+                raise CommandError('Backup in %s engine not implemented' % self.engine)
 
     def uncompress(self, filename):
         cmd = 'cd %s;gzip -df %s' % (self.tempdir, filename)
