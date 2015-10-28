@@ -11,7 +11,6 @@ try:
 except ImportError:
     from urllib import splitport
 
-
 DEFAULT_PORT = 22
 TIME_FORMAT = '%Y%m%d-%H%M%S'
 GOOD_RSYNC_FLAG = '__good_backup'
@@ -73,35 +72,35 @@ def reserve_interval(backups, type, num):
     Given a list of backup filenames, interval type(monthly, weekly, daily),
     and the number of backups to keep, return a list of filenames to reserve.
     """
-    
+
     result = []
     now = datetime.now()
-    
+
     if type == 'monthly':
         delta = timedelta(30)
         interval_end = datetime(now.year, now.month, 1)  # begin of the month
         interval_start = interval_end - delta
-        
+
     elif type == 'weekly':
         delta = timedelta(7)
         weekday = calendar.weekday(now.year, now.month, now.day)
         weekday_delta = timedelta(weekday)
         interval_end = datetime(now.year, now.month, now.day) - weekday_delta  # begin of the week
         interval_start = interval_end - delta
-        
+
     elif type == 'daily':
         delta = timedelta(1)
         interval_end = datetime(now.year, now.month, now.day) + delta
         interval_start = interval_end - delta
-        
+
     elif type == 'hourly':
         delta = timedelta(minutes=60)
         interval_end = datetime(now.year, now.month, now.day, now.hour) + delta
         interval_start = interval_end - delta
-        
+
     else:
         raise CommandError("Unknown backup interval")
-        
+
     for i in range(1, num + 1):
         for backup in backups:
             if between_interval(backup, interval_start, interval_end):
@@ -113,7 +112,6 @@ def reserve_interval(backups, type, num):
 
 
 class BaseBackupCommand(BaseCommand):
-    
     def __init__(self):
 
         super(BaseBackupCommand, self).__init__()
@@ -141,6 +139,9 @@ class BaseBackupCommand(BaseCommand):
         self.ftp_password = getattr(settings, 'BACKUP_FTP_PASSWORD', '')
         self.private_key = getattr(settings, 'BACKUP_FTP_PRIVATE_KEY', None)
         self.directory_to_backup = getattr(settings, 'DIRECTORY_TO_BACKUP', settings.MEDIA_ROOT)
+        # convert remote dir to absolute path if necessary
+        if not self.remote_dir.startswith('/') and self.ftp_username:
+            self.remote_dir = '/home/%s/%s' % (self.ftp_username, self.remote_dir)
 
     def get_connection(self):
         """
@@ -155,12 +156,12 @@ class BaseBackupCommand(BaseCommand):
         }
 
         host, port = splitport(conn_config['host'])
-        
+
         if port is None:
             port = DEFAULT_PORT
         else:
             port = int(port)
-            
+
         conn_config.update({
             'host': host,
             'port': port,
@@ -178,4 +179,3 @@ class BaseBackupCommand(BaseCommand):
     def close_connection(self):
         if getattr(self, '_ssh', None):
             self._ssh.close()
-
