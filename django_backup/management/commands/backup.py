@@ -487,7 +487,9 @@ class Command(BaseBackupCommand):
                 for file_ in remove_list:
                     target_path = os.path.join(self.remote_dir, file_)
                     self.stdout.write('Removing {}'.format(target_path))
-                    sftp.remove(target_path)
+                    command = 'rm -r {}'.format(target_path)
+                    sftp.execute(command)
+
         except ImportError:
             self.stderr.writeln('cleaned nothing, because BACKUP_MEDIA_COPIES is missing')
 
