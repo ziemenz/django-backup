@@ -355,7 +355,7 @@ class Command(BaseBackupCommand):
         if self.passwd:
             args += ["--password='%s'" % self.passwd]
         if self.host:
-            args += ["--host='%s'" % self.host]
+            args += ["--{}='{}'".format("socket" if self.host.startswith('/') else "host", self.host)]
         if self.port:
             args += ["--port=%s" % self.port]
         args += [self.db]
