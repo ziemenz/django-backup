@@ -58,6 +58,9 @@ class Command(BaseBackupCommand):
             db_local = os.path.join(self.tempdir, db_remote)
             self.stdout.write('Fetching database %s...' % db_remote)
             sftp.get(os.path.join(self.remote_restore_dir, db_remote), db_local)
+            # unpacking zipfile
+            if os.path.splitext(db_local)[1] == '.zip':
+                db_local = self.unzip(db_local)
             self.stdout.write('Uncompressing database...')
             uncompressed = self.uncompress(db_local)
 
@@ -118,6 +121,16 @@ class Command(BaseBackupCommand):
         cmd = u'tar -C %s -xzf %s' % (self.directory_to_backup, filename)
         self.stdout.write('\t%s' % cmd)
         os.system(cmd)
+
+    def unzip(self, filename):
+        (new_filename, ext) = os.path.splitext(filename)
+        cmd = 'unzip -p {password}{filename} > {new_filename}'.format(
+            password='-P {} '.format(os.environ['BACKUP_PASSWORD']) if 'BACKUP_PASSWORD' in os.environ else '',
+            filename=filename, new_filename=new_filename
+        )
+        self.stdout.write('Unzipping database...\n\tunzip {} > {}'.format(filename, new_filename))
+        os.system(cmd)
+        return new_filename
 
     def mysql_restore(self, infile):
         args = []
