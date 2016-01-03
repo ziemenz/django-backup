@@ -72,10 +72,7 @@ class Command(BaseBackupCommand):
             media_remote_full_path = os.path.join(self.remote_restore_dir, media_remote)
 
             # Check if the media is compressed or a folder
-            cmd = 'if [[ -d "%s" ]]; then echo 1; else echo 0; fi'
-            is_folder = int(sftp.execute(cmd % media_remote_full_path)[0])
-
-            if is_folder == 1:
+            if self.is_folder(media_remote_full_path):
                 media_dir = os.path.join(media_remote_full_path, "media")
                 # A trailing slash to transfer only the contents of the folder
                 remote_rsync = '%s@%s:%s/' % (self.ftp_username, self.ftp_server, media_dir)
@@ -97,6 +94,20 @@ class Command(BaseBackupCommand):
                 self.posgresql_restore(sql_local)
             else:
                 raise CommandError('Backup in %s engine not implemented' % self.engine)
+
+    def is_folder(self, path):
+        from paramiko.sftp import SFTPError
+        result = False
+        sftp = self.get_connection()
+        old_dir = sftp.getcwd()
+        try:
+            sftp.chdir(path)
+            result = True
+        except SFTPError:
+            pass
+        finally:
+            sftp.chdir(old_dir)
+        return result
 
     def uncompress(self, filename):
         cmd = 'cd %s;gzip -df %s' % (self.tempdir, filename)
