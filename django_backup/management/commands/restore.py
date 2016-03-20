@@ -88,7 +88,7 @@ class Command(BaseBackupCommand):
                 self.uncompress_media(media_local)
         # Doing restore
         if not self.no_restore_database:
-            if self.engine == 'django.db.backends.mysql':
+            if self.engine == 'django.db.backends.mysql' or 'mysql' in self.engine:
                 self.stdout.write('Doing Mysql restore to database %s from %s...' % (self.db, sql_local))
                 self.mysql_restore(sql_local)
             # TODO reinstate postgres support
